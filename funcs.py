@@ -103,7 +103,7 @@ def transcribe_diarized(path:str,num_speakers:int, language:str, model_size:str)
     end_time = time.time()
     execution_time = end_time - start_time
 
-    print(f"El tiempo total de ejecución fue de {execution_time:.2f} segundos.")
+    print(f"El tiempo total de transcripción y diarización fue de {execution_time:.2f} segundos.")
     return
 
 def generar_consejo_con_ollama(transcription_path:str, datos_vendedor:dict):
@@ -115,5 +115,6 @@ def generar_consejo_con_ollama(transcription_path:str, datos_vendedor:dict):
     result= model.invoke(input=prompt)
     end_time = time.time()
     execution_time = end_time - start_time
-    print(f"El tiempo total de ejecución fue de {execution_time:.2f} segundos.")
+    print(f"El tiempo total de la generación del consejo fue de {execution_time:.2f} segundos.")
+    print(result)
     return result
