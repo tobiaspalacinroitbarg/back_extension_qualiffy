@@ -4,6 +4,6 @@ pyannote.audio
 scikit-learn
 numpy
 langchain-ollama
-ffmpeg-python
 fastapi
 uvicorn
+nltk
