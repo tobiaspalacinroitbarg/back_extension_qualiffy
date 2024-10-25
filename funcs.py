@@ -252,14 +252,3 @@ def transcribe_diarized(path:str,num_speakers:int, language:str, model_size:str)
     print(f"El tiempo total de transcripción y diarización fue de {execution_time:.2f} segundos.")
     return
 
-    start_time = time.time()
-    with open(transcription_path, 'r', encoding='utf-8') as file:
-        transcription_text = file.read()
-    model = OllamaLLM(model="llama3")   
-    prompt = f"Eres un asistente y tienes que dar consejos de una sola oración (máximo 15 palabras por consejo, y si es más breve mejor) a partir de una transcripción de una llamada de ventas. Solo puedes hablar de tres maneras: La primera es respondiendo: 'Consejo IA: (El consejo que deberás dar, no uses vocativos, solo da el consejo en tiempo presente o imperativo)', si crees que puede haber un consejo para el vendedor en relación a cómo está hablando, si debe corregir su tono, claridad, hacer alguna pregunta en particular, etc.  La segunda manera en la que puedes hablar es diciendo 'Asesor IA: (problema:resolución)', si encuentras un problema que está mencionando el cliente y el vendedor lo puede resolver con sus servicios. Por último, debes obligatoriamente generar un resumen en menos de 50 palabras de la reunión y devolverlo en la siguiente estructura 'Resumen IA: (resumen de la reunión)'([Te paso los datos: \nTranscripción: {transcription_text}\n ,Datos del vendedor: {datos_vendedor}\n"
-    result= model.invoke(input=prompt)
-    end_time = time.time()
-    execution_time = end_time - start_time
-    print(f"El tiempo total de la generación del consejo fue de {execution_time:.2f} segundos.")
-    print(result)
-    return result
