@@ -7,3 +7,5 @@ langchain-ollama
 fastapi
 uvicorn
 nltk
+deepgram-sdk
+json

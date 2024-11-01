@@ -29,24 +29,6 @@ nltk.download('punkt_tab')
 # Descargar stopwords si no las tienes ya
 nltk.download('stopwords')
 
-def extract_ia_sections(text):
-    # Definir patrones para Asesor IA, Consejo IA y Resumen IA
-    asesor_pattern = re.compile(r"Asesor IA:\s*(.*?)\n", re.DOTALL)
-    consejo_pattern = re.compile(r"Consejo IA:\s*(.*?)\n", re.DOTALL)
-    resumen_pattern = re.compile(r"Resumen IA:\s*(.*?)$", re.DOTALL)
-
-    # Buscar coincidencias en el texto
-    asesor_match = asesor_pattern.search(text)
-    consejo_match = consejo_pattern.search(text)
-    resumen_match = resumen_pattern.search(text)
-
-    # Extraer el contenido si hay coincidencias, sino devolver None
-    asesor_ia = asesor_match.group(1).strip() if asesor_match else None
-    consejo_ia = consejo_match.group(1).strip() if consejo_match else None
-    resumen_ia = resumen_match.group(1).strip() if resumen_match else None
-
-    return asesor_ia, consejo_ia, resumen_ia
-
 def read_file_with_fallback_encoding(file_path):
     """
     Intenta leer un archivo con diferentes codificaciones.
@@ -62,30 +44,81 @@ def read_file_with_fallback_encoding(file_path):
     
     raise UnicodeDecodeError(f"No se pudo leer el archivo con ninguna de las codificaciones: {encodings}")
 
-def generar_consejo_con_ollama(transcription_path: str, datos_vendedor: dict):
+def extract_relevant_parts(transcription_text: str, max_words: int = 150) -> str:
+    """
+    Extrae las partes más relevantes de la transcripción para reducir el tamaño del input.
+    """
+    # Eliminar timestamps y marcadores de speaker
+    cleaned_text = re.sub(r'SPEAKER \d \d{2}:\d{2}:\d{2}\n', '', transcription_text)
+    
+    # Dividir en oraciones
+    sentences = cleaned_text.split('.')
+    
+    # Seleccionar las oraciones más relevantes (primeras, últimas y algunas del medio)
+    if len(sentences) > 10:
+        selected = sentences[:3] + sentences[len(sentences)//2-1:len(sentences)//2+2] + sentences[-3:]
+        return '. '.join(selected)
+    return cleaned_text
+
+def format_vendor_data(datos_vendedor: dict) -> str:
+    """
+    Formatea los datos del vendedor de manera concisa.
+    """
+    return ", ".join([f"{k}: {str(v)}" for k, v in datos_vendedor.items() if v])
+
+def generate_ollama(transcription_path: str, datos_vendedor: dict, max_retries: int = 2, timeout: int = 30) -> str:
+    """
+    Versión optimizada de la función de generación de consejos.
+    """
     start_time = time.time()
+    
     try:
-        transcription_text = read_file_with_fallback_encoding(transcription_path)
-        model = OllamaLLM(model="llama3")   
-        prompt = f"""Eres un asistente y tienes que dar consejos de una sola oración (máximo 15 palabras por consejo, 
-        y si es más breve mejor) a partir de una transcripción de una llamada de ventas. 
-        Solo puedes hablar de tres maneras: 
-        La primera es respondiendo: 'Consejo IA: (El consejo que deberás dar, no uses vocativos, solo da el consejo en tiempo presente o imperativo)', 
-        si crees que puede haber un consejo para el vendedor en relación a cómo está hablando, si debe corregir su tono, claridad, hacer alguna pregunta en particular, etc.  
-        La segunda manera en la que puedes hablar es diciendo 'Asesor IA: (problema:resolución)', 
-        si encuentras un problema que está mencionando el cliente y el vendedor lo puede resolver con sus servicios. 
-        Por último, debes obligatoriamente generar un resumen en menos de 50 palabras de la reunión y devolverlo en la siguiente estructura 
-        'Resumen IA: (resumen de la reunión)'
-        [Te paso los datos: 
-        Transcripción: {transcription_text}
-        Datos del vendedor: {datos_vendedor}]"""
+        # Leer y procesar la transcripción
+        with open(transcription_path, 'r', encoding='utf-8') as file:
+            full_transcription = file.read()
         
+        # Extraer partes relevantes para reducir el tamaño del input
+        relevant_text = extract_relevant_parts(full_transcription)
+        
+        # Formatear datos del vendedor de manera concisa
+        vendor_info = format_vendor_data(datos_vendedor)
+        
+        # Crear una instancia del modelo con timeout
+        model = OllamaLLM(
+            model="llama3",
+            temperature=0.3,  # Reducir temperatura para respuestas más concisas
+            timeout=timeout
+        )
+        
+        # Prompt optimizado y más conciso
+        prompt = f"""Analiza esta llamada de ventas y proporciona si identificas
+**Problema:**(texto máx 10 palabras)\n**Solución:**(texto de máx 10 palabras).
+
+Contexto:
+Transcripción relevante: {relevant_text}
+Datos vendedor: {vendor_info}"""
+
         result = model.invoke(input=prompt)
-        end_time = time.time()
-        execution_time = end_time - start_time
-        print(f"El tiempo total de la generación del consejo fue de {execution_time:.2f} segundos.")
         print(result)
-        return result
+        match = re.search(r'\*\*Problema:\*\* (.*?)\n\n\*\*Solución:\*\* (.*)', result)
+        if match:
+            problema = match.group(1)
+            solucion = match.group(2)
+            execution_time = time.time() - start_time
+            print(f"Tiempo de ejecución: {execution_time:.2f} segundos")
+            return problema, solucion
+        else:
+            match = re.search(r'\*\*Problema:\*\* (.*?)\n\*\*Solución:\*\* (.*)', result)
+            if match:
+                problema = match.group(1)
+                solucion = match.group(2)
+                execution_time = time.time() - start_time
+                print(f"Tiempo de ejecución: {execution_time:.2f} segundos")
+                return problema, solucion
+            else:
+                return "",""
+        
+
     except Exception as e:
         print(f"Error en generar_consejo_con_ollama: {str(e)}")
         raise
@@ -252,3 +285,112 @@ def transcribe_diarized(path:str,num_speakers:int, language:str, model_size:str)
     print(f"El tiempo total de transcripción y diarización fue de {execution_time:.2f} segundos.")
     return
 
+def dict_consejos():
+    """
+    Crea un diccionario que mapea múltiples expresiones o patrones de habla con consejos de mejora.
+    Las expresiones están agrupadas por el consejo que deberían trigger.
+    """
+    return {
+        # Velocidad y fluidez del habla
+        "Habla más despacio y organiza mejor tus ideas": [
+            "um", "eh", "este", "emmm", "ahh", "uhh",
+            "como te digo", "como te explico", "a ver déjame ver",
+            "deja pienso", "mmm", "ehh", "am"
+        ],
+        
+        # Claridad y precisión
+        "Sé más específico y directo en tus explicaciones": [
+            "como que", "más o menos", "digamos", "tal vez",
+            "quizás", "a lo mejor", "puede ser que",
+            "algo así", "una cosa así", "por ahí", "ponle que",
+            "digamos que", "se podría decir"
+        ],
+        
+        # Vocabulario profesional
+        "Utiliza un vocabulario más profesional y formal": [
+            "wey", "chido", "padre", "no mames", "nel",
+            "órale", "va", "sale", "chale", "nel pastel",
+            "equis", "neta", "simón", "fierro", "chamba",
+            "chambear", "mande", "tons", "pos"
+        ],
+        
+        # Muletillas a evitar
+        "Evita el uso excesivo de muletillas": [
+            "o sea", "básicamente", "literalmente", "prácticamente",
+            "realmente", "sinceramente", "honestamente",
+            "la verdad", "la neta", "fíjate que", "¿me explico?",
+            "¿sí me entiendes?", "¿verdad?", "¿ok?"
+        ],
+        
+        # Cortesía y engagement
+        "Muestra más interés y elabora mejor tus respuestas": [
+            "ajá", "pues", "ya", "sí", "no", "ok",
+            "está bien", "como sea", "da igual",
+            "lo que sea", "ni modo", "qué más da"
+        ],
+        
+        # Precisión técnica
+        "Utiliza términos más específicos y técnicos": [
+            "cosa", "eso", "esto", "aquello", "así",
+            "hacer algo", "hacer eso", "hacer esto",
+            "el asunto", "la cosa esa", "el tema",
+            "la situación", "el problema", "la cuestión"
+        ],
+        
+        # Control de volumen y tono
+        "Mantén un tono de voz profesional y moderado": [
+            "!", "¡", "???", "¿¿¿",
+            "MAYÚSCULAS", "¡¡", "!!", "???"
+        ],
+        
+        # Interrupciones
+        "Evita interrumpir y permite que otros terminen de hablar": [
+            "pero pero", "espera espera", "un momento un momento",
+            "déjame hablar", "te interrumpo", "perdón que te interrumpa",
+            "antes de que sigas"
+        ],
+        
+        # Dudas y vacilaciones
+        "Proyecta más seguridad en tu comunicación": [
+            "no estoy seguro", "tal vez", "quizás",
+            "no sé si", "puede que", "a lo mejor",
+            "no te prometo nada", "voy a intentar",
+            "haré lo posible"
+        ]
+    }
+
+def analize_transcription(file_path, diccionario_consejos):
+    """
+    Analiza una transcripción y devuelve el consejo más relevante basado en las expresiones encontradas.
+    
+    Args:
+        file_path (str): Ruta del archivo con la transcripción a analizar
+        diccionario_consejos (dict): Diccionario con patrones y consejos
+    
+    Returns:
+        dict: Diccionario con el consejo más relevante como clave y las expresiones encontradas como valor
+    """
+    # Leer el archivo con el manejo de codificación mejorado
+    transcripcion = read_file_with_fallback_encoding(file_path)
+    texto = transcripcion.lower()
+    
+    best_count = 0
+    best_consejo = None
+    best_expresiones = []
+    
+    for consejo, expresiones in diccionario_consejos.items():
+        expresiones_encontradas = []
+        for expresion in expresiones:
+            if expresion.lower() in texto:
+                expresiones_encontradas.append(expresion)
+        
+        if expresiones_encontradas:
+            count = len(expresiones_encontradas)
+            if count > best_count:
+                best_count = count
+                best_consejo = consejo
+                best_expresiones = expresiones_encontradas
+    if best_consejo:
+        return best_consejo
+    else: 
+        return "No hay consejo disponible"

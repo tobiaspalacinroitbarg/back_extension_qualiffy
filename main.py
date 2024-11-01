@@ -1,8 +1,9 @@
+# Librerías
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 import os
 import shutil
-from funcs import transcribe_diarized, generar_consejo_con_ollama, extract_ia_sections, calculate_word_percentage
+from funcs import transcribe_diarized, generate_ollama, dict_consejos, analize_transcription, calculate_word_percentage
 import logging
 
 # Configurar logging
@@ -21,10 +22,10 @@ app.add_middleware(
 
 os.makedirs("/media", exist_ok=True)
 
-@app.post("/process-audio")
+@app.post("/process-mc")
 async def process_audio(file: UploadFile = File(...)):
     try:
-        logger.info("Iniciando procesamiento de audio")
+        logger.info("Iniciando procesamiento de manejo y consejo")
         
         # Guardar el archivo de audio
         file_path = f"media/{file.filename}"
@@ -44,42 +45,56 @@ async def process_audio(file: UploadFile = File(...)):
         logger.info("Transcripción completada, calculando métricas")
         
         transcript_path = "media/transcript.txt"
+
         # Calcular porcentaje de palabras
         manejo = calculate_word_percentage(transcript_path, "SPEAKER 1")
         
         logger.info(f"Métricas calculadas: {manejo}%, generando consejo")
         
-        # Generar consejos
+        if not os.path.exists(transcript_path):
+            raise FileNotFoundError(f"No se encontró el archivo de transcripción en {transcript_path}")
+        
+        problema, solucion = generate_ollama(transcript_path, {"Vendedor": "Jeronimo Carrascal","Servicios":"Campañas de LinkedIn"})
+        # Calcular consejo
+        dicc = dict_consejos()
+        consejo = analize_transcription(transcript_path,dicc)
+        response = {
+            "consejo": str(consejo),
+            "manejo": str(manejo),
+            "problema":str(problema),
+            "solucion":str(solucion)
+        }
+        logger.info("Proceso completado exitosamente")
+        return response
+        
+    except Exception as e:
+        logger.error(f"Error en el procesamiento: {str(e)}", exc_info=True)
+        return {"error": str(e)}
+
+@app.post("/process-advice")
+async def process_audio(file: UploadFile = File(...)):
+    try:
+        logger.info("Iniciando generación de consejo")
+    
+        transcript_path = "media/transcript.txt"
+        
         datos_vendedor = {
             "nombre": "Jeronimo Carrascal",
-            "rol": "Vendedor"
+            "rol": "Vendedor",
+            "servicios":"Campañas de LinkedIn"
         }
         
         if not os.path.exists(transcript_path):
             raise FileNotFoundError(f"No se encontró el archivo de transcripción en {transcript_path}")
             
-        consejo = generar_consejo_con_ollama(transcript_path, datos_vendedor)
+        problema, solucion = generate_ollama(transcript_path, datos_vendedor)
         logger.info("Consejo generado, extrayendo secciones")
-        
-        consejos = extract_ia_sections(consejo)
-        if not all(consejos):
-            logger.warning("Algunas secciones del consejo están vacías")
-            
+    
         response = {
-            "consejo": consejos[1] if consejos[1] else "No se pudo generar un consejo",
-            "asesor": consejos[0] if consejos[0] else "No se pudo generar una evaluación",
-            "manejo": str(manejo)
+            "problema": str(problema),
+            "solucion":str(solucion)
         }
-        
         logger.info("Limpiando archivos temporales")
-        # Limpiar archivos temporales
-        if os.path.exists(file_path):
-            os.remove(file_path)
-        if os.path.exists(transcript_path):
-            os.remove(transcript_path)
-        if os.path.exists("audio.wav_mono.wav"):
-            os.remove("audio.wav_mono.wav")
-        
         logger.info("Proceso completado exitosamente")
         return response
         
