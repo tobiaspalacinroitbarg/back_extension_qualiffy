@@ -54,15 +54,12 @@ async def process_audio(file: UploadFile = File(...)):
         if not os.path.exists(transcript_path):
             raise FileNotFoundError(f"No se encontró el archivo de transcripción en {transcript_path}")
         
-        problema, solucion = generate_ollama(transcript_path, {"Vendedor": "Jeronimo Carrascal","Servicios":"Campañas de LinkedIn"})
         # Calcular consejo
         dicc = dict_consejos()
         consejo = analize_transcription(transcript_path,dicc)
         response = {
             "consejo": str(consejo),
-            "manejo": str(manejo),
-            "problema":str(problema),
-            "solucion":str(solucion)
+            "manejo": str(manejo)
         }
         logger.info("Proceso completado exitosamente")
         return response
