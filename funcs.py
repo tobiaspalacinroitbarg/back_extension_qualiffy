@@ -204,7 +204,7 @@ def convert_mono(audio_path:str):
         subprocess.call(['ffmpeg', '-i', audio_path, '-ac', '1', temp_path, '-y'])
         return temp_path
 
-def transcribe_diarized(path:str,num_speakers:int, language:str, model_size:str):
+def transcribe_diarized(path:str,num_speakers:int, language:str, model_size:str,output_path:str):
     # Suprimir los warnings de tipo FutureWarning y UserWarning
     warnings.filterwarnings("ignore", category=FutureWarning)
     warnings.filterwarnings("ignore", category=UserWarning)
@@ -260,102 +260,261 @@ def transcribe_diarized(path:str,num_speakers:int, language:str, model_size:str)
         embeddings[i] = segment_embedding(segment)
 
     embeddings = np.nan_to_num(embeddings)
-
-    # Agrupamiento para asignar oradores
-    clustering = AgglomerativeClustering(num_speakers).fit(embeddings)
-    labels = clustering.labels_
-    for i in range(len(segments)):
-        segments[i]["speaker"] = 'SPEAKER ' + str(labels[i] + 1)
-
+    try:
+        # Agrupamiento para asignar oradores
+        clustering = AgglomerativeClustering(num_speakers).fit(embeddings)
+        labels = clustering.labels_
+        for i in range(len(segments)):
+            segments[i]["speaker"] = 'SPEAKER ' + str(labels[i] + 1)
+    except:
+         # Agrupamiento para asignar oradores
+        clustering = AgglomerativeClustering(1).fit(embeddings)
+        labels = clustering.labels_
+        for i in range(len(segments)):
+            segments[i]["speaker"] = 'SPEAKER ' + str(labels[i] + 1)
     # Función para convertir tiempo en formato legible
     def time_format(secs):
         return str(datetime.timedelta(seconds=round(secs)))
 
     # Modificar la parte donde se guarda el archivo
-    with open("media/transcript.txt", "w", encoding="utf-8", errors='ignore') as f:
+    with open(output_path, "w", encoding="utf-8", errors='ignore') as f:
         for i, segment in enumerate(segments):
             if i == 0 or segments[i - 1]["speaker"] != segment["speaker"]:
                 f.write("\n" + segment["speaker"] + ' ' + time_format(segment["start"]) + '\n')
             f.write(segment["text"][1:] + ' ')
+
+    transcript = read_file_with_fallback_encoding(output_path)
 
     # Fin del timer y mostrar tiempo de ejecución
     end_time = time.time()
     execution_time = end_time - start_time
 
     print(f"El tiempo total de transcripción y diarización fue de {execution_time:.2f} segundos.")
-    return
+    return transcript
 
 def dict_consejos():
     """
-    Crea un diccionario que mapea múltiples expresiones o patrones de habla con consejos de mejora.
-    Las expresiones están agrupadas por el consejo que deberían trigger.
+    Diccionario expandido de expresiones comunes en llamadas formales de venta que podrían mejorarse,
+    incluyendo variantes regionales en español profesional.
     """
     return {
-        # Velocidad y fluidez del habla
-        "Habla más despacio y organiza mejor tus ideas": [
-            "um", "eh", "este", "emmm", "ahh", "uhh",
-            "como te digo", "como te explico", "a ver déjame ver",
-            "deja pienso", "mmm", "ehh", "am"
+        # Frases débiles al presentarse
+        "Fortalece tu introducción inicial": [
+            # General/España
+            "le molesto para", "interrumpo para", "disculpe que",
+            "un momentito", "buenos días", "le llamo de",
+            "perdone la molestia", "siento molestar", "espero no interrumpir",
+            "si me permite", "quisiera comentarle", "si puedo",
+            "llamaba por", "estaba llamando", "le contacto",
+            "me preguntaba si", "quería saber si", "podría ser",
+            "si tiene tiempo", "un minuto", "brevemente",
+            "rápidamente quisiera", "si me escucha", "no sé si",
+            "le explico", "déjeme contarle", "tengo entendido",
+            "según veo", "por lo visto", "me dijeron",
+            
+            # Latinoamérica
+            "mi nombre es", "le hablo de", "quisiera hablarle",
+            "para comentarle", "mire señor", "oiga señora",
+            "le hablo para", "quería ver si", "estoy llamando",
+            "me comunico para", "le contacto por", "quisiera saber",
+            "necesitaba confirmar", "deseaba consultar", "me gustaría ver",
+            "podría decirme", "sería tan amable", "si fuera posible",
+            "permítame explicarle", "si me permite", "con permiso",
+            "disculpe la hora", "si está ocupado", "cuando pueda"
         ],
-        
-        # Claridad y precisión
-        "Sé más específico y directo en tus explicaciones": [
-            "como que", "más o menos", "digamos", "tal vez",
-            "quizás", "a lo mejor", "puede ser que",
-            "algo así", "una cosa así", "por ahí", "ponle que",
-            "digamos que", "se podría decir"
+
+        # Frases débiles al presentar beneficios
+        "Comunica beneficios con más impacto": [
+            # General/España
+            "más o menos", "aproximadamente", "podría ser",
+            "quizás le interese", "tal vez necesite", "puede servirle",
+            "le podría funcionar", "sería útil", "vendría bien",
+            "ayudaría a", "mejoraría su", "facilitaría",
+            "haría que", "permitiría", "posiblemente",
+            "en teoría", "según entiendo", "por lo general",
+            "normalmente", "usualmente", "típicamente",
+            "en algunos casos", "a veces", "dependiendo",
+            "si todo va bien", "en principio", "inicialmente",
+            
+            # Latinoamérica
+            "le puede servir", "le podría ayudar", "es como",
+            "digamos que", "más que todo", "básicamente es",
+            "viene siendo", "sería como", "algo así",
+            "similar a", "parecido a", "tipo como",
+            "una especie de", "una suerte de", "se asemeja",
+            "funciona tipo", "opera como", "trabaja así",
+            "sirve para", "ayuda con", "mejora en",
+            "hace que", "permite que", "facilita que"
         ],
-        
-        # Vocabulario profesional
-        "Utiliza un vocabulario más profesional y formal": [
-            "wey", "chido", "padre", "no mames", "nel",
-            "órale", "va", "sale", "chale", "nel pastel",
-            "equis", "neta", "simón", "fierro", "chamba",
-            "chambear", "mande", "tons", "pos"
+
+        # Frases débiles al manejar precio
+        "Comunica el precio con seguridad": [
+            # General/España
+            "sale en", "cuesta como", "está en",
+            "le sale", "le costaría", "el precio es",
+            "valdría", "tendría valor", "el costo es",
+            "la inversión es", "el monto es", "la cantidad es",
+            "el total sería", "aproximadamente", "más o menos",
+            "por ahí", "alrededor de", "cerca de",
+            "ronda los", "oscila entre", "fluctúa en",
+            "puede variar", "depende de", "según el caso",
+            
+            # Latinoamérica
+            "le sale en", "viene costando", "estaría en",
+            "sale como", "le queda en", "precio aproximado",
+            "vendría siendo", "quedaría en", "saldría por",
+            "le costaría", "el valor es", "la tarifa es",
+            "el pago sería", "el importe es", "la suma es",
+            "el total es", "el precio final", "el costo total",
+            "la inversión total", "el monto final", "el valor total"
         ],
-        
-        # Muletillas a evitar
-        "Evita el uso excesivo de muletillas": [
-            "o sea", "básicamente", "literalmente", "prácticamente",
-            "realmente", "sinceramente", "honestamente",
-            "la verdad", "la neta", "fíjate que", "¿me explico?",
-            "¿sí me entiendes?", "¿verdad?", "¿ok?"
+
+        # Frases débiles al manejar objeciones
+        "Maneja objeciones con más seguridad": [
+            # General/España
+            "entiendo que", "comprendo que", "si, pero",
+            "tiene razón", "claro, aunque", "es verdad",
+            "lo entiendo", "ya veo", "me hago cargo",
+            "sí, ciertamente", "efectivamente", "naturalmente",
+            "por supuesto", "desde luego", "sin duda",
+            "en efecto", "evidentemente", "claramente",
+            "comprensible", "lógicamente", "obviamente",
+            "en realidad", "de hecho", "ciertamente",
+            
+            # Latinoamérica
+            "sí, entiendo", "claro, pero", "le entiendo",
+            "puede ser", "es cierto", "tiene razón",
+            "comprendo su punto", "veo su preocupación", "entiendo su posición",
+            "es comprensible", "es razonable", "es lógico",
+            "tiene sentido", "es válido", "es importante",
+            "es considerable", "es relevante", "es significativo",
+            "me imagino", "supongo que", "asumo que",
+            "probablemente", "posiblemente", "seguramente"
         ],
-        
-        # Cortesía y engagement
-        "Muestra más interés y elabora mejor tus respuestas": [
-            "ajá", "pues", "ya", "sí", "no", "ok",
-            "está bien", "como sea", "da igual",
-            "lo que sea", "ni modo", "qué más da"
+
+        # Frases débiles al cerrar
+        "Fortalece tus cierres": [
+            # General/España
+            "si le parece", "cuando guste", "si le interesa",
+            "piénselo", "consúltelo", "me avisa",
+            "podríamos proceder", "seguimos adelante", "avanzamos con",
+            "lo tramitamos", "iniciamos el", "comenzamos con",
+            "formalizamos", "concretamos", "cerramos",
+            "definimos", "acordamos", "establecemos",
+            "coordinamos", "programamos", "agendamos",
+            "reservamos", "apartamos", "separamos",
+            
+            # Latinoamérica
+            "lo puede pensar", "me dice entonces", "me confirma",
+            "me avisa cualquier", "lo consultamos", "nos mantenemos",
+            "podemos continuar", "seguimos con", "procedemos con",
+            "iniciamos el", "empezamos con", "arrancamos con",
+            "formalizamos ya", "concretamos hoy", "cerramos ahora",
+            "definimos esto", "acordamos esto", "establecemos ya",
+            "coordinamos ahora", "programamos ya", "agendamos esto"
         ],
-        
-        # Precisión técnica
-        "Utiliza términos más específicos y técnicos": [
-            "cosa", "eso", "esto", "aquello", "así",
-            "hacer algo", "hacer eso", "hacer esto",
-            "el asunto", "la cosa esa", "el tema",
-            "la situación", "el problema", "la cuestión"
+
+        # Frases débiles de seguimiento
+        "Mejora el seguimiento": [
+            # General/España
+            "le vuelvo llamar", "lo contacto", "le escribo",
+            "nos comunicamos", "le marco", "estamos hablando",
+            "me comunico", "le contacto", "vuelvo a llamar",
+            "retomo contacto", "me pongo en", "vuelvo con",
+            "regreso con", "insisto", "retomo",
+            "verifico", "confirmo", "reviso",
+            "chequeo", "consulto", "averiguo",
+            
+            # Latinoamérica
+            "lo vuelvo llamar", "le contacto", "nos hablamos",
+            "le marco después", "lo busco", "le escribo",
+            "me comunico luego", "le contacto después", "vuelvo a llamarlo",
+            "retomo contacto", "me pongo en", "vuelvo con",
+            "regreso con", "insisto luego", "retomo después",
+            "verifico luego", "confirmo después", "reviso y llamo",
+            "chequeo y aviso", "consulto y llamo", "averiguo y contacto"
         ],
-        
-        # Control de volumen y tono
-        "Mantén un tono de voz profesional y moderado": [
-            "!", "¡", "???", "¿¿¿",
-            "MAYÚSCULAS", "¡¡", "!!", "???"
+
+        # Muletillas formales a evitar
+        "Elimina muletillas formales": [
+            # General/España
+            "este...", "eh...", "mire...",
+            "o sea", "digamos", "básicamente",
+            "en realidad", "de hecho", "sinceramente",
+            "honestamente", "francamente", "ciertamente",
+            "efectivamente", "evidentemente", "obviamente",
+            "claramente", "simplemente", "prácticamente",
+            "teóricamente", "técnicamente", "realmente",
+            "verdaderamente", "seguramente", "probablemente",
+            
+            # Latinoamérica
+            "verdad?", "me entiende?", "correcto?",
+            "cierto?", "no?", "ok?",
+            "me explico?", "me sigue?", "está claro?",
+            "me comprende?", "me capta?", "me entiende?",
+            "lo tiene?", "lo ve?", "lo nota?",
+            "lo percibe?", "lo observa?", "lo aprecia?",
+            "se da cuenta?", "lo visualiza?", "lo considera?"
         ],
-        
-        # Interrupciones
-        "Evita interrumpir y permite que otros terminen de hablar": [
-            "pero pero", "espera espera", "un momento un momento",
-            "déjame hablar", "te interrumpo", "perdón que te interrumpa",
-            "antes de que sigas"
+
+        # Frases dubitativas
+        "Proyecta más seguridad": [
+            # General/España
+            "no sé si", "tal vez", "posiblemente",
+            "quizás", "probablemente", "seguramente",
+            "puede que", "podría ser", "sería posible",
+            "cabría la", "existiría la", "habría la",
+            "se podría", "se debería", "convendría",
+            "sugeriría", "propondría", "plantearía",
+            "consideraría", "evaluaría", "analizaría",
+            
+            # Latinoamérica
+            "puede ser", "más o menos", "aproximadamente",
+            "como que", "por ahí", "alrededor de",
+            "tal vez podríamos", "quizás deberíamos", "posiblemente sea",
+            "probablemente convenga", "seguramente sirva", "puede que funcione",
+            "podría resultar", "sería conveniente", "cabría considerar",
+            "existiría posibilidad", "habría chance", "se podría intentar"
         ],
-        
-        # Dudas y vacilaciones
-        "Proyecta más seguridad en tu comunicación": [
-            "no estoy seguro", "tal vez", "quizás",
-            "no sé si", "puede que", "a lo mejor",
-            "no te prometo nada", "voy a intentar",
-            "haré lo posible"
+
+        # Minimizadores
+        "Evita minimizar tu propuesta": [
+            # General/España
+            "solamente para", "nada más para", "solo quería",
+            "únicamente", "brevemente", "rápidamente",
+            "un momentito", "un segundito", "un instante",
+            "pequeño favor", "simple consulta", "breve pregunta",
+            "rápida consulta", "corta llamada", "pequeña duda",
+            "mínima consulta", "ligera pregunta", "básica duda",
+            "sencilla pregunta", "simple duda", "fácil consulta",
+            
+            # Latinoamérica
+            "solo para", "nomás para", "rapidito para",
+            "un momento", "un segundito", "un ratito",
+            "pequeña consulta", "breve momento", "rápida pregunta",
+            "simple duda", "corto instante", "pequeño espacio",
+            "mínimo tiempo", "ligero momento", "básica consulta",
+            "sencilla duda", "fácil pregunta", "simple momento"
+        ],
+
+        # Frases de sumisión
+        "Mantén una posición de igual a igual": [
+            # General/España
+            "si me permite", "si no le molesta", "cuando pueda",
+            "si tiene tiempo", "si gusta", "si desea",
+            "si lo considera", "si lo estima", "si lo cree",
+            "si le parece", "si lo ve", "si lo prefiere",
+            "si lo autoriza", "si lo aprueba", "si lo acepta",
+            "si me concede", "si me otorga", "si me faculta",
+            "si me posibilita", "si me facilita", "si me permite",
+            
+            # Latinoamérica
+            "si me deja", "si me acepta", "si tiene oportunidad",
+            "si me autoriza", "si me concede", "si me permite",
+            "si lo considera", "si lo permite", "si es posible",
+            "si no es molestia", "si no es problema", "si no es inconveniente",
+            "si tiene chance", "si puede ser", "si es factible",
+            "si es viable", "si es realizable", "si es ejecutable"
         ]
     }
 
@@ -391,6 +550,7 @@ def analize_transcription(file_path, diccionario_consejos):
                 best_consejo = consejo
                 best_expresiones = expresiones_encontradas
     if best_consejo:
+        print(best_expresiones)
         return best_consejo
     else: 
         return "No hay consejo disponible"
